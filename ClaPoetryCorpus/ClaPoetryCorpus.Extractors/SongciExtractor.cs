@@ -24,7 +24,7 @@ namespace ClaPoetryCorpus.Extractors
             TitleXPath = "/html/body/table/tr/td/table/tr/td/table/tr/td/p";
         }
 
-        public IEnumerable<SongCi> ExtractFromDirectory(string dirPath)
+        public List<SongCi> ExtractFromDirectory(string dirPath)
         {
             DirectoryInfo dir = new DirectoryInfo(dirPath);
 
@@ -35,7 +35,7 @@ namespace ClaPoetryCorpus.Extractors
 
             FileInfo[] htmlFiles = dir.GetFiles("*.htm*", SearchOption.AllDirectories);
 
-            return htmlFiles.SelectMany(info => ExtractFromFile(info));
+            return htmlFiles.SelectMany(info => ExtractFromFile(info)).ToList();
         }
 
         public List<SongCi> ExtractFromFile(string filePath)
@@ -58,12 +58,17 @@ namespace ClaPoetryCorpus.Extractors
         {
             HtmlNode authorNode = rootNode.SelectSingleNode(AuthorXPath);
 
-            return NormalizeText(authorNode.InnerText);
+            return authorNode != null ? NormalizeText(authorNode.InnerText) : null;
         }
 
         private IEnumerable<SongCi> ExtractSongCi(HtmlNode rootNode)
         {
             string author = ExtractAuthor(rootNode);
+
+            if(string.IsNullOrEmpty(author))
+            {
+                yield break;
+            }
 
             var titleNodes = rootNode.SelectNodes(TitleXPath);
 
@@ -71,7 +76,22 @@ namespace ClaPoetryCorpus.Extractors
             {
                 if (IsSongCiTitle(titleNode))
                 {
-                    yield return new SongCi(author, NormalizeText(titleNode.InnerText), NormalizeText(titleNode.NextSibling.InnerText));
+                    string fullBody = NormalizeText(titleNode.NextSibling.InnerText);
+
+                    string[] parts = fullBody.Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries)
+                                            .Where(x => !string.IsNullOrWhiteSpace(x))
+                                            .ToArray();
+                    string subTitle = string.Empty;
+                    
+                    if(parts.Length > 1 && parts[0].EndsWith(@"\\"))
+                    {
+                        subTitle = parts[0].Substring(0, parts[0].Length - 2);
+                        parts = parts.Skip(1).ToArray();
+                    }
+
+                    string body = string.Join("\r\n", parts);
+
+                    yield return new SongCi(author, NormalizeText(titleNode.InnerText), subTitle, body);
                 }
             }            
         }
